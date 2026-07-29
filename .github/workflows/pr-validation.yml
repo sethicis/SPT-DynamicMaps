@@ -5,6 +5,10 @@ on:
     branches: [ main ]
     types: [ opened, ready_for_review, synchronize ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: windows-latest
