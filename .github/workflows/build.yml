@@ -66,11 +66,14 @@ jobs:
         shell: pwsh
 
       - name: Download game references
+        id: download-refs
+        continue-on-error: true
         run: gh release download game-references --pattern "references.zip" --dir .
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract game references
+        if: steps.download-refs.outcome == 'success'
         run: Expand-Archive -Path references.zip -DestinationPath libs
         shell: pwsh
 
@@ -78,12 +81,19 @@ jobs:
         run: dotnet build Server\mpstark-dynamicmaps.csproj -c Release
 
       - name: Build Plugin
+        if: steps.download-refs.outcome == 'success'
         run: |
           $tarkovDir = "${{ github.workspace }}\libs\"
           dotnet build Plugin\DynamicMaps.csproj -c Release /p:TarkovDir="$tarkovDir"
         shell: pwsh
 
+      - name: Warn - Plugin build skipped
+        if: steps.download-refs.outcome != 'success'
+        run: Write-Warning "Plugin build skipped: 'game-references' release not found. Create a release tagged 'game-references' with references.zip attached (see workflow comments for required structure)."
+        shell: pwsh
+
       - name: Upload artifact
+        if: steps.download-refs.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: DynamicMaps-${{ steps.version.outputs.VERSION }}
