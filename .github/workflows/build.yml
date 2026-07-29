@@ -1,0 +1,100 @@
+# Builds DynamicMaps and uploads the packaged release zip as a downloadable artifact.
+#
+# REQUIRED SETUP: This workflow downloads the Tarkov game reference DLLs (Assembly-CSharp,
+# UnityEngine, BepInEx, etc.) from a GitHub Release tagged "game-references" in this
+# repository. Create that release once by:
+#   1. Collecting the following DLLs from your game installation into this directory structure:
+#        references.zip
+#        └── EscapeFromTarkov_Data/
+#              └── Managed/
+#                    Assembly-CSharp.dll
+#                    Comfort.dll
+#                    Comfort.Unity.dll
+#                    DissonanceVoip.dll
+#                    DOTween.dll
+#                    DOTween.Modules.dll
+#                    Newtonsoft.Json.dll
+#                    Sirenix.Serialization.dll
+#                    Unity.InternalAPIEngineBridge.003.dll
+#                    Unity.TextMeshPro.dll
+#                    Unity.VectorGraphics.dll
+#                    UnityEngine.dll
+#                    UnityEngine.CoreModule.dll
+#                    UnityEngine.ImageConversionModule.dll
+#                    UnityEngine.IMGUIModule.dll
+#                    UnityEngine.InputLegacyModule.dll
+#                    UnityEngine.PhysicsModule.dll
+#                    UnityEngine.TextRenderingModule.dll
+#                    UnityEngine.UI.dll
+#                    UnityEngine.UIModule.dll
+#        └── BepInEx/
+#              ├── core/
+#              │     0Harmony.dll
+#              │     BepInEx.dll
+#              │     BepInEx.Preloader.dll
+#              └── plugins/
+#                    └── spt/
+#                          spt-common.dll
+#                          spt-custom.dll
+#                          spt-reflection.dll
+#   2. Create a GitHub Release in this repository with the tag "game-references" and
+#      attach the resulting references.zip as a release asset.
+
+name: Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Read version
+        id: version
+        run: |
+          $version = (Get-Content Plugin\VERSION.txt).Trim()
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        shell: pwsh
+
+      - name: Download game references
+        id: download-refs
+        continue-on-error: true
+        run: gh release download game-references --pattern "references.zip" --dir .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract game references
+        if: steps.download-refs.outcome == 'success'
+        run: Expand-Archive -Path references.zip -DestinationPath libs
+        shell: pwsh
+
+      - name: Build Server
+        run: dotnet build Server\mpstark-dynamicmaps.csproj -c Release
+
+      - name: Build Plugin
+        if: steps.download-refs.outcome == 'success'
+        run: |
+          $tarkovDir = "${{ github.workspace }}\libs\"
+          dotnet build Plugin\DynamicMaps.csproj -c Release /p:TarkovDir="$tarkovDir"
+        shell: pwsh
+
+      - name: Warn - Plugin build skipped
+        if: steps.download-refs.outcome != 'success'
+        run: Write-Warning "Plugin build skipped: 'game-references' release not found. Create a release tagged 'game-references' with references.zip attached (see workflow comments for required structure)."
+        shell: pwsh
+
+      - name: Upload artifact
+        if: steps.download-refs.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: DynamicMaps-${{ steps.version.outputs.VERSION }}
+          path: Plugin\release\DynamicMaps-*.zip

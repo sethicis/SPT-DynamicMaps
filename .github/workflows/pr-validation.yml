@@ -1,0 +1,50 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, ready_for_review, synchronize ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Download game references
+        id: download-refs
+        continue-on-error: true
+        run: gh release download game-references --pattern "references.zip" --dir .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract game references
+        if: steps.download-refs.outcome == 'success'
+        run: Expand-Archive -Path references.zip -DestinationPath libs
+        shell: pwsh
+
+      - name: Validate Server build
+        run: dotnet build Server\mpstark-dynamicmaps.csproj -c Release --no-incremental
+
+      - name: Validate Plugin build
+        if: steps.download-refs.outcome == 'success'
+        run: |
+          $tarkovDir = "${{ github.workspace }}\libs\"
+          dotnet build Plugin\DynamicMaps.csproj -c Release --no-incremental /p:TarkovDir="$tarkovDir"
+        shell: pwsh
+
+      - name: Warn - Plugin build skipped
+        if: steps.download-refs.outcome != 'success'
+        run: Write-Warning "Plugin build skipped: 'game-references' release not found. Create a release tagged 'game-references' with references.zip attached (see build.yml comments for required structure)."
+        shell: pwsh
