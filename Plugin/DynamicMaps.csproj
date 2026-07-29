@@ -16,6 +16,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ILRepack.MSBuild.Task" Version="2.0.34.2" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="Assembly-CSharp">
       <HintPath>$(TarkovManagedDir)Assembly-CSharp.dll</HintPath>
     </Reference>
@@ -72,9 +76,11 @@
     </Reference>
       <Reference Include="Unity.VectorGraphics">
           <HintPath>$(TarkovManagedDir)Unity.VectorGraphics.dll</HintPath>
+          <Private>true</Private>
       </Reference>
       <Reference Include="Unity.InternalAPIEngineBridge.003">
           <HintPath>$(TarkovManagedDir)Unity.InternalAPIEngineBridge.003.dll</HintPath>
+          <Private>true</Private>
       </Reference>
     <Reference Include="0Harmony">
       <HintPath>$(TarkovBepInExCoreDir)0Harmony.dll</HintPath>
@@ -116,11 +122,29 @@
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <ItemGroup>
+        <AssembliesToMerge Include="$(ProjectDir)$(OutDir)Unity.VectorGraphics.dll" />
+        <AssembliesToMerge Include="$(ProjectDir)$(OutDir)Unity.InternalAPIEngineBridge.003.dll" />
         <ServerComponents Include="$(ProjectDir)../Server/bin/Release/mpstark-dynamicmaps/*.*" />
         <OutputDLL Include="$(ProjectDir)$(OutDir)$(TargetName).dll" />
         <License Include="$(ProjectDir)LICENSE" />
         <Resources Include="$(ProjectDir)Resources\**\*.*" />
     </ItemGroup>
+
+    <!-- Merge Unity.VectorGraphics and Unity.InternalAPIEngineBridge.003 into the output DLL -->
+    <ILRepack
+      ExcludeFileTokPatterns=""
+      KeyFile=""
+      LogFile=""
+      Parallel="true"
+      AttributeFile=""
+      OutputFile="$(ProjectDir)$(OutDir)$(TargetName).dll"
+      PrimaryAssemblyFile="$(ProjectDir)$(OutDir)$(TargetName).dll"
+      AssemblyFiles="@(AssembliesToMerge)"
+      TargetKind="SameAsPrimaryAssembly"
+      XmlDocumentation="false"
+      AllowDuplicateResources="false"
+      Internalize="true"
+    />
 
     <!-- Copies the output and resources to tarkov game folder -->
       <Copy SourceFiles="@(OutputDLL);@(Resources);@(License)" DestinationFolder="$(TarkovDir)BepInEx\plugins\DynamicMaps\%(RecursiveDir)" />
